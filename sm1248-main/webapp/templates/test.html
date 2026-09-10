@@ -1,0 +1,185 @@
+<!doctype html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Cybersecurity Threat Simulator - Test</title>
+    <!-- main css file -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+
+<h1>Simulation Test</h1>
+<!-- simulation status -->
+<p><strong>Simulation ID:</strong> <span id="simId">-</span></p>
+<p><strong>State:</strong> <span id="state">-</span></p>
+<p><strong>Risk Score:</strong> <span id="riskScore">-</span></p>
+<p><strong>Result:</strong> <span id="resultBox" class="result-in-progress">No result yet.</span></p>
+
+<h3>Chat</h3>
+<div id="chatBox">
+    <div class="message attacker">Loading simulation...</div>
+</div>
+
+<!-- fake attacker typing message -->
+<p id="typingIndicator" style="display: none;"><em>Attacker is typing...</em></p>
+
+<!-- user options -->
+<h3>Actions</h3>
+<button action-btn onclick="sendAction('click_link', 'I clicked the link.')">Click Link</button>
+<button action-btn onclick="sendAction('ignore', 'I ignored the message.')">Ignore</button>
+<button action-btn onclick="sendAction('report', 'I reported the message.')">Report</button>
+
+<h3>Event Log</h3>
+<pre id="eventLog">No events yet.</pre>
+
+<p><a href="/">← Back to Home</a></p>
+
+<script>
+    // get simulation id created from home page
+    let currentSimulationId = localStorage.getItem('currentSimulationId');
+// add message to chat box
+    function addChatMessage(text, sender) {
+        const chatBox = document.getElementById('chatBox');
+        const msg = document.createElement('div');
+        msg.classList.add('message', sender);
+        msg.textContent = text;
+        chatBox.appendChild(msg);
+        chatBox.scrollTop = chatBox.scrollHeight;
+    }
+// clear old chat messages
+    function clearChat() {
+        document.getElementById('chatBox').innerHTML = '';
+    }
+// load saved simulation messages
+    async function loadSimulation() {
+        if (!currentSimulationId) {
+            document.getElementById('simId').textContent = '-';
+            document.getElementById('state').textContent = '-';
+            document.getElementById('riskScore').textContent = '-';
+            document.getElementById('resultBox').textContent = 'No active simulation.';
+            clearChat();
+            addChatMessage('No active simulation found. Go back home and start one.', 'attacker');
+            return;
+        }
+
+        document.getElementById('simId').textContent = currentSimulationId;
+    // get previous events from backend
+        const response = await fetch(`/simulation/${currentSimulationId}/events`);
+        const data = await response.json();
+
+        clearChat();
+    // rebuild chat from events
+        if (data.events && data.events.length > 0) {
+            data.events.forEach(event => {
+                if (event.event_type === 'ATTACK_MESSAGE') {
+                    addChatMessage(event.content, 'attacker');
+                } else if (event.event_type === 'USER_ACTION') {
+                    addChatMessage(event.content, 'user');
+                }
+            });
+
+            document.getElementById('eventLog').textContent = JSON.stringify(data.events, null, 2);
+        // check latest attacker message
+            const latestAttack = [...data.events].reverse().find(e => e.event_type === 'ATTACK_MESSAGE');
+            if (latestAttack) {
+                document.getElementById('state').textContent = 'IN_PROGRESS';
+                document.getElementById('riskScore').textContent = '0';
+                setResult('Simulation in progress...', 'result-in-progress');
+            }
+        } else {
+            addChatMessage('No messages found for this simulation.', 'attacker');
+        }
+    }
+// send user action to backend
+    async function sendAction(action, userDisplayText) {
+        if (!currentSimulationId) {
+            alert('No active simulation found.');
+            return;
+        }
+
+        const typingIndicator = document.getElementById('typingIndicator');
+    // show user message first
+        setActionButtonsDisabled(true);
+        addChatMessage(userDisplayText, 'user');
+        typingIndicator.style.display = 'block';
+
+        try {
+            const response = await fetch('/respond', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    simulation_id: currentSimulationId,
+                    action: action
+                })
+            });
+
+            const data = await response.json();
+        // random delay to make attacker response feel more real
+            const delay = Math.floor(Math.random() * 3000) + 2000;
+
+            setTimeout(async () => {
+                typingIndicator.style.display = 'none';
+            // update state and score
+                document.getElementById('state').textContent = data.new_state;
+                document.getElementById('riskScore').textContent = data.risk_score;
+
+                addChatMessage(data.message, 'attacker');
+            // check final states
+                if (data.new_state === 'END_SUCCESS') {
+                    setResult('Safe - you handled the attack correctly.', 'result-safe');
+                    setActionButtonsDisabled(true);
+                    localStorage.setItem('lastSimulationId', currentSimulationId);
+                    window.location.href = '/results';
+                } else if (data.new_state === 'END_NEUTRAL') {
+                    setResult('Neutral - the threat stopped, but was not reported.', 'result-neutral');
+                    setActionButtonsDisabled(true);
+                    localStorage.setItem('lastSimulationId', currentSimulationId);
+                    window.location.href = '/results';
+                } else if (data.new_state === 'END_COMPROMISED') {
+                    setResult('Compromised - attacker likely gained access.', 'result-compromised');
+                    setActionButtonsDisabled(true);
+                    localStorage.setItem('lastSimulationId', currentSimulationId);
+                    window.location.href = '/results';
+                } else {
+                    setResult('Simulation in progress...', 'result-in-progress');
+                    setActionButtonsDisabled(false);
+                }
+
+                await loadEvents();
+            }, delay);
+
+        } catch (error) {
+            typingIndicator.style.display = 'none';
+            addChatMessage('Error: response failed.', 'attacker');
+            setActionButtonsDisabled(false);
+            console.error(error);
+        }
+    }
+// load raw event log
+    async function loadEvents() {
+        if (!currentSimulationId) return;
+
+        const response = await fetch(`/simulation/${currentSimulationId}/events`);
+        const data = await response.json();
+
+        document.getElementById('eventLog').textContent = JSON.stringify(data.events, null, 2);
+    }
+// enable or disable action buttons
+    function setActionButtonsDisabled(disabled) {
+        document.querySelectorAll('button[action-btn]').forEach(btn => {
+            btn.disabled = disabled;
+        });
+    }
+// update result message and style
+    function setResult(text, cssClass) {
+        const el = document.getElementById('resultBox');
+        el.textContent = text;
+        el.className = '';
+        el.classList.add(cssClass);
+    }
+// load sim when page opens
+    window.addEventListener('load', loadSimulation);
+</script>
+
+</body>
+</html>

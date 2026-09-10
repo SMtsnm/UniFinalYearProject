@@ -1,0 +1,276 @@
+<!doctype html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Cybersecurity Threat Simulator</title>
+
+    <!-- main css file -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+
+<h1>Cybersecurity Threat Simulator</h1>
+
+<h2>User Authentication</h2>
+
+    <!-- shows logged in user -->
+    <p><strong>Logged in user:</strong> <span id="loggedInUser">None</span></p>
+
+    <label for="emailInput"><strong>Email:</strong></label>
+    <input type="email" id="emailInput" placeholder="Enter email">
+
+    <label for="passwordInput"><strong>Password:</strong></label>
+    <input type="password" id="passwordInput" placeholder="Enter password">
+
+    <button id="registerBtn">Register</button>
+    <button id="loginBtn">Login</button>
+
+<hr>
+
+<!-- simulation settings -->
+<label for="difficultySelect"><strong>Difficulty:</strong></label>
+<select id="difficultySelect">
+    <option value="easy" selected>Easy</option>
+    <option value="medium">Medium</option>
+    <option value="hard">Hard</option>
+</select>
+
+<label for="attackTypeSelect"><strong>Attack Type:</strong></label>
+<select id="attackTypeSelect">
+    <option value="phishing" selected>IT Support Phishing</option>
+    <option value="delivery">Delivery Scam</option>
+</select>
+
+<button id="startBtn">Start Simulation</button>
+
+<!-- simulation info -->
+<p><strong>Simulation ID:</strong> <span id="simId">-</span></p>
+<p><strong>State:</strong> <span id="state">-</span></p>
+<p><strong>Risk Score:</strong> <span id="riskScore">-</span></p>
+<p><strong>Result:</strong> <span id="resultBox" class="result-in-progress">No result yet.</span></p>
+
+<h3>Current Message</h3>
+    <p id="messageBox">No simulation started yet.</p>
+
+    <!-- fake typing effect -->
+    <p id="typingIndicator" style="display: none;"><em>Attacker is typing<span id="dots">...</span></em></p>
+
+<h3>Actions</h3>
+    <!-- user choices -->
+    <button action-btn onclick="sendAction('click_link')">Click Link</button>
+    <button action-btn onclick="sendAction('ignore')">Ignore</button>
+    <button action-btn onclick="sendAction('report')">Report</button>
+
+<h3>Event Log</h3>
+<pre id="eventLog">No events yet.</pre>
+
+<script>
+// current sim and user
+let currentSimulationId = null;
+let currentUserId = null;
+
+// start simulation from selected options
+async function startSimulation() {
+    const selectedDifficulty = document.getElementById('difficultySelect').value;
+    const selectedAttackType = document.getElementById('attackTypeSelect').value;
+
+    // send selected options to backend
+    const response = await fetch('/start_simulation', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            difficulty: selectedDifficulty,
+            attack_type: selectedAttackType,
+            user_id: currentUserId
+        })
+    });
+
+    const data = await response.json();
+
+    // save current simulation id
+    currentSimulationId = data.simulation_id;
+
+    // update page with new simulation info
+    document.getElementById('simId').textContent = data.simulation_id;
+    document.getElementById('state').textContent = data.state;
+    document.getElementById('riskScore').textContent = 0;
+    document.getElementById('messageBox').textContent = data.message;
+    document.getElementById('typingIndicator').style.display = 'none';
+
+    setResult("Simulation in progress...", "result-in-progress");
+    setActionButtonsDisabled(false);
+
+    loadEvents();
+}
+
+// send selected user action to backend
+async function sendAction(action) {
+    if (!currentSimulationId) {
+        alert("Start a simulation first.");
+        return;
+    }
+
+    const typingIndicator = document.getElementById('typingIndicator');
+
+    // disable buttons while attacker is typing
+    setActionButtonsDisabled(true);
+    typingIndicator.style.display = 'block';
+    startTypingAnimation();
+
+    try {
+        const response = await fetch('/respond', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                simulation_id: currentSimulationId,
+                action: action
+            })
+        });
+
+        const data = await response.json();
+
+        // random delay for realism
+        const delay = Math.floor(Math.random() * 3000) + 2000;
+
+        setTimeout(() => {
+            stopTypingAnimation();
+            typingIndicator.style.display = 'none';
+
+            // update state, score and message
+            document.getElementById('state').textContent = data.new_state;
+            document.getElementById('riskScore').textContent = data.risk_score;
+            document.getElementById('messageBox').textContent = data.message;
+
+            // check if sim has ended
+            if (data.new_state === "END_SUCCESS") {
+                setResult("Safe - you handled the attack correctly.", "result-safe");
+                setActionButtonsDisabled(true);
+            } else if (data.new_state === "END_NEUTRAL") {
+                setResult("Neutral - the threat stopped, but was not reported.", "result-neutral");
+                setActionButtonsDisabled(true);
+            } else if (data.new_state === "END_COMPROMISED") {
+                setResult("Compromised - attacker likely gained access.", "result-compromised");
+                setActionButtonsDisabled(true);
+            } else {
+                setResult("Simulation in progress...", "result-in-progress");
+                setActionButtonsDisabled(false);
+            }
+
+            loadEvents();
+        }, delay);
+
+    } catch (error) {
+        // if request fails, show simple error
+        typingIndicator.style.display = 'none';
+        document.getElementById('messageBox').textContent = 'Error: response failed.';
+        setActionButtonsDisabled(false);
+        console.error(error);
+    }
+}
+
+// load event log from backend
+async function loadEvents() {
+    if (!currentSimulationId) return;
+
+    const response = await fetch(`/simulation/${currentSimulationId}/events`);
+    const data = await response.json();
+
+    // show events as json for now
+    document.getElementById('eventLog').textContent =
+        JSON.stringify(data.events, null, 2);
+}
+
+// disable or enable action buttons
+function setActionButtonsDisabled(disabled) {
+    document.querySelectorAll('button[action-btn]').forEach(btn => {
+        btn.disabled = disabled;
+    });
+}
+
+// update result text and colour
+function setResult(text, cssClass) {
+    const el = document.getElementById('resultBox');
+    el.textContent = text;
+    el.className = '';
+    el.classList.add(cssClass);
+}
+
+let dotInterval;
+
+// starts dot animation for typing indicator
+function startTypingAnimation() {
+    const dots = document.getElementById('dots');
+    let count = 0;
+
+    dotInterval = setInterval(() => {
+        count = (count + 1) % 4;
+        dots.textContent = '.'.repeat(count);
+    }, 400);
+}
+
+// stops typing dots
+function stopTypingAnimation() {
+    clearInterval(dotInterval);
+}
+
+// register user
+async function registerUser() {
+    const email = document.getElementById('emailInput').value;
+    const password = document.getElementById('passwordInput').value;
+
+    // send register request
+    const response = await fetch('/register', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ email, password })
+    });
+
+    const data = await response.json();
+
+    if (response.ok) {
+        alert(data.message);
+    } else {
+        alert(data.error || 'Registration failed');
+    }
+}
+
+// login user
+async function loginUser() {
+    const email = document.getElementById('emailInput').value;
+    const password = document.getElementById('passwordInput').value;
+
+    // send login request
+    const response = await fetch('/login', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ email, password })
+    });
+
+    const data = await response.json();
+
+    if (response.ok) {
+        // store current user for simulation
+        currentUserId = data.user_id;
+        document.getElementById('loggedInUser').textContent = `${email} (ID: ${data.user_id})`;
+        alert(data.message);
+    } else {
+        alert(data.error || 'Login failed');
+    }
+}
+
+// button click handlers
+document.getElementById('startBtn').addEventListener('click', startSimulation);
+document.getElementById('registerBtn').addEventListener('click', registerUser);
+document.getElementById('loginBtn').addEventListener('click', loginUser);
+</script>
+
+</body>
+</html>

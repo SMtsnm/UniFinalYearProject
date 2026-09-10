@@ -1,0 +1,62 @@
+<!doctype html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Simulation Results</title>
+
+    <!-- main css file -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+
+<h1>Simulation Results</h1>
+
+<!-- final simulation details -->
+<p><strong>Simulation ID:</strong> <span id="simId">-</span></p>
+<p><strong>Final State:</strong> <span id="finalState">-</span></p>
+<p><strong>Risk Score:</strong> <span id="riskScore">-</span></p>
+<p><strong>Verdict:</strong> <span id="verdict">-</span></p>
+
+<h3>Event Timeline</h3>
+<pre id="eventLog">Loading...</pre>
+
+<p><a href="/">Start New Simulation</a></p>
+
+<script>
+// get last finished simulation id from browser storage
+let simulationId = localStorage.getItem('lastSimulationId');
+
+// load final result and event log
+async function loadResults() {
+    if (!simulationId) {
+        document.getElementById('verdict').textContent = 'No results found.';
+        return;
+    }
+
+    // show simulation id on page
+    document.getElementById('simId').textContent = simulationId;
+
+    // get final result from backend
+    const res = await fetch(`/results/${simulationId}`);
+    const data = await res.json();
+
+    // update result fields
+    document.getElementById('finalState').textContent = data.final_state;
+    document.getElementById('riskScore').textContent = data.risk_score;
+    document.getElementById('verdict').textContent = data.verdict;
+
+    // get event timeline
+    const eventsRes = await fetch(`/simulation/${simulationId}/events`);
+    const eventsData = await eventsRes.json();
+
+    // show events as json
+    document.getElementById('eventLog').textContent =
+        JSON.stringify(eventsData.events, null, 2);
+}
+
+// load results when page opens
+window.addEventListener('load', loadResults);
+</script>
+
+</body>
+</html>

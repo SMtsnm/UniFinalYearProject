@@ -1,0 +1,77 @@
+body {
+    font-family: Arial, sans-serif;
+    max-width: 900px;
+    margin: 30px auto;
+    line-height: 1.6;
+}
+
+button, select {
+    padding: 8px 12px;
+    margin: 5px 5px 5px 0;
+    font-size: 14px;
+}
+
+#messageBox, #eventLog {
+    background: #f4f4f4;
+    padding: 12px;
+    border-radius: 8px;
+    border: 1px solid #ddd;
+}
+
+#resultBox {
+    font-weight: bold;
+    padding: 8px 12px;
+    border-radius: 6px;
+    display: inline-block;
+}
+
+.result-safe {
+    background-color: #d4edda;
+    color: #155724;
+}
+
+.result-neutral {
+    background-color: #fff3cd;
+    color: #856404;
+}
+
+.result-compromised {
+    background-color: #f8d7da;
+    color: #721c24;
+}
+
+.result-in-progress {
+    background-color: #e2e3e5;
+    color: #383d41;
+}
+
+#chatBox {
+    background: #f4f4f4;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 12px;
+    min-height: 220px;
+    max-height: 350px;
+    overflow-y: auto;
+    margin-bottom: 15px;
+}
+
+.message {
+    max-width: 75%;
+    padding: 10px 12px;
+    border-radius: 12px;
+    margin: 8px 0;
+    word-wrap: break-word;
+}
+
+.attacker {
+    background-color: #e9ecef;
+    color: #222;
+}
+
+.user {
+    background-color: #dbeafe;
+    color: #111;
+    margin-left: auto;
+    text-align: right;
+}
